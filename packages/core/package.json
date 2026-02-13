@@ -1,6 +1,6 @@
 {
   "name": "longform-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-powered long-form content generation engine — novels, technical docs, courses & screenplays with multi-provider support, interactive sessions, and intelligent continuity tracking.",
   "type": "module",
   "main": "./dist/index.js",
