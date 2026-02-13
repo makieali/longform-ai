@@ -423,55 +423,119 @@ const ai = new LongFormAI({
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph API ["<b>BookSession API</b>"]
+        direction LR
+        A1["generateOutline()"] --> A2["approveOutline()"]
+        A2 --> A3["generateChapter()"]
+        A3 --> A4["rewriteChapter()"]
+        A4 --> A5["export()"]
+    end
+
+    API --> Pipeline
+
+    subgraph Pipeline ["<b>Per-Chapter Pipeline</b>"]
+        direction LR
+        S1["1. Outline<br/><i>Book structure,<br/>characters, themes</i>"]
+        S2["2. Planner<br/><i>Scene-by-scene<br/>breakdown</i>"]
+        S3["3. Writer<br/><i>Full prose +<br/>expand loop</i>"]
+        S4["4. Editor<br/><i>Quality scoring<br/>1-10 scale</i>"]
+        S5["5. Continuity<br/><i>Rolling summary<br/>& char tracking</i>"]
+
+        S1 --> S2 --> S3 --> S4 --> S5
+        S4 -- "rejected" --> S3
+    end
+
+    subgraph Refusal ["<b>Refusal Detection</b>"]
+        R1["38 patterns"]
+        R2["Auto-retry ×3"]
+        R3["Content extraction"]
+        R4["Full-text scan"]
+    end
+
+    S3 -.-> Refusal
+
+    subgraph Providers ["<b>Provider Registry (8 providers)</b>"]
+        direction LR
+        P1["OpenAI"]
+        P2["Anthropic"]
+        P3["Google"]
+        P4["Azure"]
+        P5["DeepSeek"]
+        P6["Mistral"]
+        P7["Ollama"]
+        P8["OpenRouter"]
+    end
+
+    Pipeline --> Providers
+
+    subgraph Memory ["<b>Memory & Continuity</b>"]
+        direction LR
+        M1["Rolling Summary"]
+        M2["Character States"]
+        M3["Timeline Events"]
+        M4["World State"]
+        M5["Qdrant <i>(optional)</i>"]
+    end
+
+    S5 --> Memory
+
+    style API fill:#1a1a2e,stroke:#e94560,stroke-width:2px,color:#fff
+    style Pipeline fill:#16213e,stroke:#0f3460,stroke-width:2px,color:#fff
+    style Providers fill:#0f3460,stroke:#533483,stroke-width:2px,color:#fff
+    style Memory fill:#1a1a2e,stroke:#e94560,stroke-width:2px,color:#fff
+    style Refusal fill:#2d132c,stroke:#ee4540,stroke-width:2px,color:#fff
+```
+
 <div align="center">
-
-```
-                                    ┌─────────────────────────────────────────────┐
-                                    │              BookSession API                │
-                                    │  generateOutline → approveOutline →         │
-                                    │  generateChapter → rewriteChapter →         │
-                                    │  expandChapter → export                     │
-                                    └──────────────────┬──────────────────────────┘
-                                                       │
-                          ┌────────────────────────────┼────────────────────────────┐
-                          │                            │                            │
-                   ┌──────▼──────┐             ┌───────▼───────┐            ┌───────▼───────┐
-                   │   Outline   │             │    Planner    │            │    Writer     │
-                   │  Generator  │             │  (per scene)  │            │  + Expand     │
-                   └──────┬──────┘             └───────┬───────┘            │  + Refusal    │
-                          │                            │                    │    Detection  │
-                          │                            │                    └───────┬───────┘
-                          │                            │                            │
-                          │                     ┌──────▼──────┐             ┌───────▼───────┐
-                          │                     │   Editor     │◄───────────│  Continuity   │
-                          │                     │  (scoring)   │            │  (summaries)  │
-                          │                     └─────────────┘            └───────────────┘
-                          │
-               ┌──────────▼──────────┐
-               │  Provider Registry  │
-               │  ┌────┐ ┌────────┐  │
-               │  │ AI │ │ Azure  │  │
-               │  │ SDK│ │OpenAI  │  │
-               │  └────┘ └────────┘  │
-               │  ┌────┐ ┌────────┐  │
-               │  │Goog│ │Anthropic│  │
-               │  └────┘ └────────┘  │
-               └─────────────────────┘
-```
-
+<table>
+<tr>
+<td align="center"><b>Each stage uses a different AI model</b> — cheap models for planning, premium models for writing</td>
+</tr>
+</table>
 </div>
 
 The pipeline follows a **5-stage process** for each chapter:
 
-| Stage | Role | What It Does |
-|:------|:-----|:-------------|
-| **1. Outline** | `outline` | Generates full book structure with chapters, characters, themes |
-| **2. Planning** | `planning` | Creates detailed scene-by-scene plan for each chapter |
-| **3. Writing** | `writing` | Writes the full chapter prose with expand loop for word count |
-| **4. Editing** | `editing` | Scores prose/plot/pacing/dialogue on 1-10 scale, requests rewrites |
-| **5. Continuity** | `continuity` | Updates rolling summary and character states for next chapter |
-
-Each stage can use a **different AI model** — use cheap models for planning, expensive ones for writing.
+<table>
+<tr>
+<th width="40">Stage</th>
+<th width="120">Role</th>
+<th>What It Does</th>
+<th width="180">Recommended Model</th>
+</tr>
+<tr>
+<td align="center"><h3>1</h3></td>
+<td><b>Outline</b><br/><code>outline</code></td>
+<td>Generates full book structure with chapters, characters, themes, and plot arcs</td>
+<td>Claude Sonnet / GPT-4.1</td>
+</tr>
+<tr>
+<td align="center"><h3>2</h3></td>
+<td><b>Planning</b><br/><code>planning</code></td>
+<td>Creates detailed scene-by-scene plan per chapter — settings, characters, conflicts</td>
+<td>Gemini Flash / Haiku <i>(cheap)</i></td>
+</tr>
+<tr>
+<td align="center"><h3>3</h3></td>
+<td><b>Writing</b><br/><code>writing</code></td>
+<td>Writes full chapter prose with expand loop for word count + refusal detection</td>
+<td>Claude Opus / Sonnet <i>(best you can afford)</i></td>
+</tr>
+<tr>
+<td align="center"><h3>4</h3></td>
+<td><b>Editing</b><br/><code>editing</code></td>
+<td>Scores prose/plot/pacing/dialogue on 1-10 scale, requests rewrites if needed</td>
+<td>GPT-4.1 <i>(analytical)</i></td>
+</tr>
+<tr>
+<td align="center"><h3>5</h3></td>
+<td><b>Continuity</b><br/><code>continuity</code></td>
+<td>Updates rolling summary, character states, timeline events for next chapter</td>
+<td>Gemini Flash / Haiku <i>(cheap)</i></td>
+</tr>
+</table>
 
 <br />
 
@@ -1164,18 +1228,34 @@ interface RelevantContext {
 
 ### Chapter Generation Pipeline
 
-Each chapter goes through a multi-stage pipeline:
+Each chapter goes through a multi-stage pipeline with automatic retry and expansion:
 
-```
-Plan → Write → [Expand if short] → Edit → [Rewrite if needed] → Continuity Update
+```mermaid
+flowchart LR
+    A["Plan<br/><i>Scene breakdown</i>"] --> B["Write<br/><i>Full prose</i>"]
+    B --> C{"Too short?"}
+    C -- "Yes (up to 3x)" --> D["Expand<br/><i>Add detail</i>"]
+    D --> C
+    C -- "No" --> E["Edit<br/><i>Score 1-10</i>"]
+    E --> F{"Approved?"}
+    F -- "No" --> G["Rewrite<br/><i>With feedback</i>"]
+    G --> E
+    F -- "Yes" --> H["Continuity<br/><i>Update state</i>"]
+
+    style A fill:#6c5ce7,color:#fff,stroke:#a29bfe
+    style B fill:#0984e3,color:#fff,stroke:#74b9ff
+    style D fill:#fdcb6e,color:#2d3436,stroke:#ffeaa7
+    style E fill:#00b894,color:#fff,stroke:#55efc4
+    style G fill:#e17055,color:#fff,stroke:#fab1a0
+    style H fill:#6c5ce7,color:#fff,stroke:#a29bfe
 ```
 
-- **Planning**: Scene-by-scene breakdown with settings, characters, objectives, conflicts
-- **Writing**: Full prose generation with reinforced word count instructions
-- **Expand Loop**: Automatically expands short chapters up to 3 times — adds detail, dialogue, and description
-- **Editing**: AI editor scores prose, plot, character, pacing, dialogue (1-10 scale)
-- **Rewrite**: If editor rejects, chapter is rewritten with specific feedback
-- **Continuity**: Rolling summary updated, character states tracked for next chapter
+- **Planning** — Scene-by-scene breakdown with settings, characters, objectives, conflicts
+- **Writing** — Full prose generation with reinforced word count instructions
+- **Expand Loop** — Automatically expands short chapters up to 3x — adds detail, dialogue, description
+- **Editing** — AI editor scores prose, plot, character, pacing, dialogue (1-10 scale)
+- **Rewrite** — If editor rejects, chapter is rewritten with specific feedback
+- **Continuity** — Rolling summary updated, character states tracked for next chapter
 
 ### Refusal Detection
 
