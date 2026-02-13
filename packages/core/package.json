@@ -1,6 +1,7 @@
 {
-  "name": "@longform-ai/core",
+  "name": "longform-ai",
   "version": "0.1.0",
+  "description": "AI-powered long-form content generation engine — novels, technical docs, courses & screenplays with multi-provider support, interactive sessions, and intelligent continuity tracking.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,12 +11,44 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "longform",
+    "novel",
+    "book",
+    "content-generation",
+    "writing",
+    "openai",
+    "anthropic",
+    "claude",
+    "gpt",
+    "gemini",
+    "azure",
+    "langgraph",
+    "ai-sdk"
+  ],
+  "author": "makieali",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/makieali/longform-ai.git"
+  },
+  "homepage": "https://github.com/makieali/longform-ai#readme",
+  "bugs": {
+    "url": "https://github.com/makieali/longform-ai/issues"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
