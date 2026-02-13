@@ -638,7 +638,7 @@ longform-ai/
 
 ```bash
 # Clone and install
-git clone https://github.com/YOUR_USERNAME/longform-ai.git
+git clone https://github.com/makieali/longform-ai.git
 cd longform-ai
 pnpm install
 
