@@ -7,7 +7,7 @@
 
 ## Issue #1: Model Refusal Text Leaking Into Generated Chapters
 
-### Status: PARTIALLY FIXED — needs one more iteration
+### Status: FIXED (commit 5903d1e)
 
 ### Problem
 
@@ -334,7 +334,7 @@ Some chapters still end up under target after 3 expand attempts (e.g., Ch 5: 568
 
 | Priority | Issue | Effort | Impact |
 |:---------|:------|:-------|:-------|
-| **P0** | #1: Refusal fragments → expand loop | Small (3 code changes) | Eliminates worst quality problem |
+| ~~**P0**~~ | ~~#1: Refusal fragments → expand loop~~ | ~~Small (3 code changes)~~ | ~~DONE — commit 5903d1e~~ |
 | **P1** | #3: Expand loop lacks context | Small (pass plan to expand) | Better content when expanding |
 | **P2** | #4: Word count enforcement | Medium (scene-by-scene option) | More consistent chapter lengths |
 | **P3** | #2: AI-based refusal detection | Medium (new module + tests) | Future-proofs the system |
