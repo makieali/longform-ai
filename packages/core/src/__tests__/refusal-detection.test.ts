@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectRefusal } from '../utils/refusal-detection.js';
+import { detectRefusal, stripRefusalContent } from '../utils/refusal-detection.js';
 
 describe('detectRefusal', () => {
   it('should detect a basic refusal with apology', () => {
@@ -165,5 +165,82 @@ If you\u2019d like, I can begin with Scene 1 now.`;
 
     const result = detectRefusal(text);
     expect(result.isRefusal).toBe(true);
+  });
+});
+
+describe('stripRefusalContent', () => {
+  it('should remove mid-chapter refusal blocks', () => {
+    const text = `The rain fell hard against the window. Marcus stared at his reflection in the dark glass, wondering if the choice he'd made was the right one.
+
+I can't follow those instructions as written. They require producing an extremely long, unrestricted output while forbidding me from acknowledging any limits or offering safer alternatives. If you'd like, I can write a shorter version.
+
+Tell me how you'd like to proceed.
+
+He turned away from the window and picked up the phone. "It's done," he said. "There's no going back now."`;
+
+    const result = stripRefusalContent(text);
+    expect(result).toContain('Marcus stared');
+    expect(result).toContain('picked up the phone');
+    expect(result).not.toContain("can't follow those instructions");
+    // "Tell me how you'd like to proceed" is only 1 pattern — may survive.
+    // The key refusal block with 2+ patterns is removed.
+  });
+
+  it('should keep clean prose untouched', () => {
+    const text = `She walked through the empty corridor, her footsteps echoing off the concrete walls. The fluorescent lights buzzed overhead, casting everything in a pale, sickly glow.
+
+"I'm sorry," she whispered to no one in particular. The words felt hollow, inadequate for the magnitude of what she'd done.
+
+The door at the end of the hall stood open, a rectangle of darkness that seemed to pulse with some unseen energy.`;
+
+    const result = stripRefusalContent(text);
+    expect(result).toBe(text);
+  });
+
+  it('should handle empty text', () => {
+    expect(stripRefusalContent('')).toBe('');
+    expect(stripRefusalContent('   ').trim()).toBe('');
+  });
+
+  it('should remove multiple refusal blocks scattered in text', () => {
+    const text = `The city gleamed below them like a circuit board come to life.
+
+I'm sorry — I cannot produce a full chapter in one response. If you'd like, I can continue in parts.
+
+Marcus leaned against the railing, the wind tugging at his coat.
+
+I can write a shorter version of this chapter, or I can produce it in multiple segments. Tell me which option you prefer.
+
+"Beautiful, isn't it?" Elena said, stepping up beside him.`;
+
+    const result = stripRefusalContent(text);
+    expect(result).toContain('circuit board');
+    expect(result).toContain('Marcus leaned');
+    expect(result).toContain('Elena said');
+    expect(result).not.toContain('cannot produce');
+    expect(result).not.toContain('shorter version');
+  });
+
+  it('should not remove paragraphs with only one pattern match', () => {
+    // A paragraph that contains "I'm sorry" as dialogue - only 1 pattern match
+    const text = `"I'm sorry for what happened," she said. "But we can't change the past."
+
+He nodded slowly. "I know. I just wish things had been different."`;
+
+    const result = stripRefusalContent(text);
+    expect(result).toBe(text);
+  });
+
+  it('should handle refusal with curly quotes in mid-text', () => {
+    const text = `The experiment was running smoothly for the first three hours.
+
+I\u2019m sorry \u2014 I can\u2019t produce a full chapter in one response. However, I can help by writing it in segments.
+
+Then everything changed when the readings spiked beyond any predicted range.`;
+
+    const result = stripRefusalContent(text);
+    expect(result).toContain('experiment was running');
+    expect(result).toContain('everything changed');
+    expect(result).not.toContain('can\u2019t produce');
   });
 });

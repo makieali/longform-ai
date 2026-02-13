@@ -46,6 +46,20 @@ const REFUSAL_PATTERNS = [
   /\bwe can adapt the constraints\b/i,
   /\bwhat I'?m allowed to generate\b/i,
   /\bI can produce it in multiple\b/i,
+  /\bI cannot follow\b/i,
+  /\bI can'?t comply\b/i,
+  /\bI'?m required to (?:warn|flag|note)\b/i,
+  /\b(?:choose|select) (?:one|which) (?:of|option)/i,
+  /\bsafety (?:rules|requirements|guidelines|constraints)\b/i,
+  /\boverride (?:those|these|my|safety) (?:requirements|rules|constraints)\b/i,
+  /\bTo continue,? choose\b/i,
+  /\bI can still help\b/i,
+  /\bI \*?can\*? still (?:help|write|produce)\b/i,
+  /\bviolate safety\b/i,
+  /\bexceeds? safe output\b/i,
+  /\bprohibition on (?:acknowledging|offering)\b/i,
+  /\bdirect conflict with\b/i,
+  /\b(?:all are safe|safely sized)\b/i,
 ];
 
 export interface RefusalResult {
@@ -136,4 +150,47 @@ function stripRefusalPreamble(text: string): string {
 
   // Couldn't find clear content — return original (caller should retry)
   return text;
+}
+
+/**
+ * Scans the ENTIRE text for paragraphs containing refusal content and removes them.
+ *
+ * Unlike `detectRefusal()` which only checks the first 500 characters,
+ * this function scans every paragraph in the full text. This catches
+ * raw refusal blocks that appear mid-chapter (e.g., the model inserts
+ * "I can't follow those instructions" after writing several paragraphs).
+ *
+ * A paragraph is removed if it matches 2+ refusal patterns.
+ * Single-pattern matches are kept to avoid false positives on legitimate prose.
+ */
+export function stripRefusalContent(text: string): string {
+  if (!text.trim()) return text;
+
+  const paragraphs = text.split(/\n\n+/);
+  const cleaned: string[] = [];
+
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) {
+      cleaned.push(para); // Preserve spacing
+      continue;
+    }
+
+    const normalized = normalizeQuotes(trimmed);
+    const matchCount = REFUSAL_PATTERNS.filter(p => p.test(normalized)).length;
+
+    // Also detect structural refusal indicators (option lists, bullet points with alternatives)
+    const isOptionList = /^(?:•|\*|-|\d+\.)\s/.test(trimmed) && (
+      /\b(?:shorter|condensed|outline|serialized|multi-message|rewrite|focused)\b/i.test(normalized) ||
+      /\b(?:option|choose|version|alternative)\b/i.test(normalized)
+    );
+
+    // Keep paragraph only if it's clean
+    if (matchCount >= 2 || isOptionList) {
+      continue; // Drop this paragraph
+    }
+    cleaned.push(para);
+  }
+
+  return cleaned.join('\n\n').trim();
 }

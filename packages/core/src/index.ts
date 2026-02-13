@@ -90,7 +90,7 @@ export { TokenBudget } from './context/token-budget.js';
 export { MemorySessionStorage } from './session/storage.js';
 
 // Utilities
-export { detectRefusal } from './utils/refusal-detection.js';
+export { detectRefusal, stripRefusalContent } from './utils/refusal-detection.js';
 
 // Main API
 export { LongFormAI } from './longform-ai.js';

@@ -10,13 +10,41 @@ import {
   buildExpandChapterSystemPrompt,
   buildAntiRefusalRetryPrompt,
 } from '../../prompts/writer-prompts.js';
-import { detectRefusal } from '../../utils/refusal-detection.js';
+import { detectRefusal, stripRefusalContent } from '../../utils/refusal-detection.js';
 import { buildSummaryExtractionPrompt } from '../../prompts/continuity-prompts.js';
 import type { MemoryProvider } from '../../memory/provider.js';
 import type { CostEntry } from '../../types.js';
 
 export function countWords(text: string): number {
   return text.split(/\s+/).filter(w => w.length > 0).length;
+}
+
+/**
+ * Strips meta-commentary preamble that expand models sometimes prepend.
+ * E.g., "Below is the expanded chapter. It is approximately 2100+ words..."
+ */
+function stripExpandPreamble(text: string): string {
+  const lines = text.split('\n');
+  let startIdx = 0;
+
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    const line = lines[i].trim();
+    if (!line) { startIdx = i + 1; continue; }
+    if (/^(?:Below is|Here is|Here's|The following is|I've expanded|This is the|The expanded)/i.test(line)) {
+      startIdx = i + 1;
+      continue;
+    }
+    if (/^-{3,}$/.test(line)) {
+      startIdx = i + 1;
+      continue;
+    }
+    break;
+  }
+
+  if (startIdx > 0) {
+    return lines.slice(startIdx).join('\n').trim();
+  }
+  return text;
 }
 
 export async function writerNode(
@@ -117,9 +145,11 @@ export async function writerNode(
     }
   }
 
-  // If all attempts were refusals, use the best cleaned text
+  // If all attempts were refusals, only use cleaned text if substantial.
+  // Short fragments (< 100 words) are residual refusal text that the
+  // expand loop would weave into meta-fiction. Discard them.
   if (!finalContent) {
-    finalContent = bestCleanedContent;
+    finalContent = bestCleanedWordCount >= 100 ? bestCleanedContent : '';
   }
 
   let wordCount = countWords(finalContent);
@@ -148,21 +178,70 @@ export async function writerNode(
     const deficit = plan.targetWords - wordCount;
     const expandMaxTokens = Math.max(deficit * 2, 4096);
 
-    const { text: rawExpanded, usage: expandUsage } = await generateText({
-      model,
-      system: buildExpandChapterSystemPrompt(),
-      prompt: buildExpandChapterPrompt(finalContent, wordCount, plan.targetWords),
-      maxTokens: expandMaxTokens,
-    });
+    let rawText: string;
+    let expandUsage: { promptTokens: number; completionTokens: number };
 
-    // Strip refusal preamble if present
-    const expandRefusal = detectRefusal(rawExpanded);
-    const expanded = expandRefusal.isRefusal ? expandRefusal.cleanedText : rawExpanded;
+    // When content is very short (< 50 words), generate from scratch using
+    // the full writer prompt with plan context instead of the expand prompt.
+    if (wordCount < 50) {
+      const result = await generateText({
+        model,
+        system: buildWriterSystemPrompt(state.config),
+        prompt: basePrompt + memoryContext,
+        temperature: registry.getModelConfig('writing').temperature,
+        maxTokens: expandMaxTokens,
+      });
+      rawText = result.text;
+      expandUsage = result.usage;
+    } else {
+      const result = await generateText({
+        model,
+        system: buildExpandChapterSystemPrompt(),
+        prompt: buildExpandChapterPrompt(finalContent, wordCount, plan.targetWords),
+        maxTokens: expandMaxTokens,
+      });
+      rawText = result.text;
+      expandUsage = result.usage;
+    }
+
+    // Check for refusal — reject entirely instead of using cleaned text
+    const expandRefusal = detectRefusal(rawText);
+    if (expandRefusal.isRefusal) {
+      const cleanedCheck = detectRefusal(expandRefusal.cleanedText);
+      if (cleanedCheck.isRefusal || countWords(expandRefusal.cleanedText) < 100) {
+        // Refusal with no salvageable content — skip this attempt
+        costs.push({
+          step: 'writing_expand_refusal',
+          model: modelId,
+          inputTokens: expandUsage.promptTokens,
+          outputTokens: expandUsage.completionTokens,
+          cost: calculateCost(modelId, expandUsage),
+        });
+        continue;
+      }
+      // Cleaned text is substantial and clean — use it
+      const cleanedWordCount = countWords(expandRefusal.cleanedText);
+      if (cleanedWordCount > wordCount) {
+        finalContent = expandRefusal.cleanedText;
+        wordCount = cleanedWordCount;
+      }
+      costs.push({
+        step: 'writing_expand',
+        model: modelId,
+        inputTokens: expandUsage.promptTokens,
+        outputTokens: expandUsage.completionTokens,
+        cost: calculateCost(modelId, expandUsage),
+      });
+      continue;
+    }
+
+    // Strip expand preamble (e.g., "Below is the expanded chapter...")
+    const stripped = stripExpandPreamble(rawText);
 
     // Only accept expansion if it's actually longer
-    const expandedWordCount = countWords(expanded);
+    const expandedWordCount = countWords(stripped);
     if (expandedWordCount > wordCount) {
-      finalContent = expanded;
+      finalContent = stripped;
       wordCount = expandedWordCount;
     } else {
       // Model returned shorter content — stop expanding, keep best version
@@ -170,13 +249,17 @@ export async function writerNode(
     }
 
     costs.push({
-      step: 'writing_expand',
+      step: wordCount < 50 ? 'writing_fresh_generate' : 'writing_expand',
       model: modelId,
       inputTokens: expandUsage.promptTokens,
       outputTokens: expandUsage.completionTokens,
       cost: calculateCost(modelId, expandUsage),
     });
   }
+
+  // Full-text refusal scan — catch any raw refusal blocks mid-chapter
+  finalContent = stripRefusalContent(finalContent);
+  wordCount = countWords(finalContent);
 
   // Flag if still below minimum after expansion
   if (wordCount < minAcceptable) {

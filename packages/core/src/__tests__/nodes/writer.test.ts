@@ -362,8 +362,8 @@ Tell me how you'd like to proceed.`;
     expect(result.costs![1].step).toBe('writing_refusal_retry');
   });
 
-  it('should use cleaned text when all retries produce refusals', async () => {
-    const refusalWithContent = `I'm sorry — I can't produce a full chapter in one response.
+  it('should discard short refusal fragments and return empty when all retries fail', async () => {
+    const refusalWithShortContent = `I'm sorry — I can't produce a full chapter in one response.
 
 However, I *can* provide shorter excerpts.
 
@@ -371,12 +371,12 @@ If you'd like, I can break the chapter into parts.
 
 Tell me how you'd like to proceed.
 
-The laboratory hummed with the low drone of servers. Dr. Mira Kessler pressed her palm against the biometric scanner and waited for the heavy door to release.`;
+The laboratory hummed with the low drone of servers.`;
 
     vi.mocked(generateText)
-      // All 4 attempts return refusals (initial + 3 retries)
+      // All attempts return refusals (initial + 3 retries + 3 expand attempts)
       .mockResolvedValue({
-        text: refusalWithContent,
+        text: refusalWithShortContent,
         usage: { promptTokens: 2000, completionTokens: 200 },
       } as any);
 
@@ -389,7 +389,39 @@ The laboratory hummed with the low drone of servers. Dr. Mira Kessler pressed he
       configurable: { registry },
     } as any);
 
-    // Should have the cleaned content (refusal stripped)
+    // Short cleaned text (< 100 words) should be discarded (Fix 1).
+    // Since all expand attempts also return refusals, the draft stays empty.
+    expect(result.currentDraft).not.toMatch(/^I'm sorry/);
+    expect(result.currentDraft).not.toContain('can\'t produce');
+  });
+
+  it('should keep substantial cleaned text when all retries are refusals', async () => {
+    // Cleaned content is 100+ words — should be kept
+    const longStoryContent = Array(25).fill('The wind howled through the canyon walls as Dr. Mira Kessler pressed forward.').join(' ');
+    const refusalWithLongContent = `I'm sorry — I can't produce a full chapter in one response.
+
+However, I *can* provide shorter excerpts.
+
+If you'd like, I can break the chapter into parts.
+
+${longStoryContent}`;
+
+    vi.mocked(generateText)
+      .mockResolvedValue({
+        text: refusalWithLongContent,
+        usage: { promptTokens: 2000, completionTokens: 200 },
+      } as any);
+
+    const registry = new ProviderRegistry(
+      { anthropic: { apiKey: 'test' }, google: { apiKey: 'test' } },
+      mockConfig.models as any,
+    );
+
+    const result = await writerNode(makeState(), {
+      configurable: { registry },
+    } as any);
+
+    // Substantial cleaned text (100+ words) should be kept
     expect(result.currentDraft).toContain('Dr. Mira Kessler');
     expect(result.currentDraft).not.toMatch(/^I'm sorry/);
   });

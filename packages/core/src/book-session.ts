@@ -22,7 +22,7 @@ import {
   buildExpandChapterSystemPrompt,
   buildAntiRefusalRetryPrompt,
 } from './prompts/writer-prompts.js';
-import { detectRefusal } from './utils/refusal-detection.js';
+import { detectRefusal, stripRefusalContent } from './utils/refusal-detection.js';
 import {
   buildEditorSystemPrompt,
   buildEditorUserPrompt,
@@ -382,8 +382,11 @@ export class BookSession {
         wordCount: countWords(draft),
       } as ProgressEvent);
 
-      // Step 3: Expand loop if too short
-      draft = await this.expandIfNeeded(targetChapter, draft, chapterPlan.targetWords, chapterCosts);
+      // Step 3: Expand loop if too short (pass plan for fresh generation if empty)
+      draft = await this.expandIfNeeded(targetChapter, draft, chapterPlan.targetWords, chapterCosts, 3, detailedPlan);
+
+      // Step 3b: Full-text refusal scan — catch any raw refusal blocks mid-chapter
+      draft = stripRefusalContent(draft);
 
       // Step 4: Edit cycles
       let editCount = 0;
@@ -420,7 +423,7 @@ export class BookSession {
           chapterCosts,
           draft,
         );
-        draft = await this.expandIfNeeded(targetChapter, draft, chapterPlan.targetWords, chapterCosts);
+        draft = await this.expandIfNeeded(targetChapter, draft, chapterPlan.targetWords, chapterCosts, 3, detailedPlan);
         editCount++;
       }
 
@@ -889,9 +892,12 @@ export class BookSession {
       }
     }
 
-    // All attempts resulted in refusals — return empty string so expand loop
-    // generates fresh content rather than expanding around refusal text
-    return bestText;
+    // All attempts resulted in refusals.
+    // Only return cleaned text if it's substantial (100+ words).
+    // Short fragments are almost always residual refusal text that the
+    // expand loop would weave into meta-fiction about characters reading
+    // AI error messages. Return empty so expand generates from scratch.
+    return bestWordCount >= 100 ? bestText : '';
   }
 
   private async rewriteFromFeedback(
@@ -947,6 +953,7 @@ export class BookSession {
     targetWords: number,
     costs: CostEntry[],
     maxAttempts: number = 3,
+    plan?: DetailedChapterPlan,
   ): Promise<string> {
     const tolerance = this.sessionConfig.wordConfig?.tolerance ?? 0.15;
     const minAcceptable = Math.floor(targetWords * (1 - tolerance));
@@ -971,23 +978,65 @@ export class BookSession {
       const deficit = targetWords - wordCount;
       const expandMaxTokens = Math.max(deficit * 2, 4096);
 
-      const { text: rawExpanded, usage } = await generateText({
-        model,
-        system: buildExpandChapterSystemPrompt(),
-        prompt: buildExpandChapterPrompt(current, wordCount, targetWords),
-        maxTokens: expandMaxTokens,
-      });
+      let rawText: string;
+      let usage: { promptTokens: number; completionTokens: number };
 
-      this.addCostEntry(costs, 'writing_expand', modelId, usage);
+      // When content is very short (< 50 words), the "expand" approach fails
+      // because there's nothing meaningful to expand. Instead, generate the
+      // chapter from scratch using the full writer prompt with plan context.
+      if (wordCount < 50 && plan) {
+        const result = await generateText({
+          model,
+          system: buildWriterSystemPrompt(this.genConfig),
+          prompt: buildWriterUserPrompt(
+            plan,
+            this.state.rollingSummary,
+            this.state.previousChapterEnding,
+            this.genConfig,
+          ),
+          temperature: this.registry.getModelConfig('writing').temperature,
+          maxTokens: expandMaxTokens,
+        });
+        rawText = result.text;
+        usage = result.usage;
+        this.addCostEntry(costs, 'writing_fresh_generate', modelId, usage);
+      } else {
+        const result = await generateText({
+          model,
+          system: buildExpandChapterSystemPrompt(),
+          prompt: buildExpandChapterPrompt(current, wordCount, targetWords),
+          maxTokens: expandMaxTokens,
+        });
+        rawText = result.text;
+        usage = result.usage;
+        this.addCostEntry(costs, 'writing_expand', modelId, usage);
+      }
 
-      // Strip refusal preamble if present
-      const refusal = detectRefusal(rawExpanded);
-      const expanded = refusal.isRefusal ? refusal.cleanedText : rawExpanded;
+      // Check for refusal
+      const refusal = detectRefusal(rawText);
+      if (refusal.isRefusal) {
+        // If the cleaned text is also a refusal or very short, skip this attempt entirely.
+        // Do NOT accept refusal text as "expanded" content — it would pollute the chapter.
+        const cleanedCheck = detectRefusal(refusal.cleanedText);
+        if (cleanedCheck.isRefusal || countWords(refusal.cleanedText) < 100) {
+          continue; // Try again (next attempt)
+        }
+        // Cleaned text is substantial and clean — use it
+        const cleanedWordCount = countWords(refusal.cleanedText);
+        if (cleanedWordCount > wordCount) {
+          current = refusal.cleanedText;
+          wordCount = cleanedWordCount;
+        }
+        continue;
+      }
 
-      // Only accept expansion if it's actually longer
-      const expandedWordCount = countWords(expanded);
+      // Also strip any expand preamble (e.g., "Below is the expanded chapter...")
+      const stripped = this.stripExpandPreamble(rawText);
+
+      // Only accept if it's actually longer
+      const expandedWordCount = countWords(stripped);
       if (expandedWordCount > wordCount) {
-        current = expanded;
+        current = stripped;
         wordCount = expandedWordCount;
       } else {
         // Model returned shorter content — stop expanding, keep best version
@@ -1117,6 +1166,35 @@ export class BookSession {
       }
     }
     return null;
+  }
+
+  /**
+   * Strips meta-commentary preamble that expand models sometimes prepend.
+   * E.g., "Below is the expanded chapter. It is approximately 2100+ words..."
+   */
+  private stripExpandPreamble(text: string): string {
+    const lines = text.split('\n');
+    let startIdx = 0;
+
+    // Skip leading lines that look like meta-commentary about the expansion
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const line = lines[i].trim();
+      if (!line) { startIdx = i + 1; continue; }
+      if (/^(?:Below is|Here is|Here's|The following is|I've expanded|This is the|The expanded)/i.test(line)) {
+        startIdx = i + 1;
+        continue;
+      }
+      if (/^-{3,}$/.test(line)) {
+        startIdx = i + 1;
+        continue;
+      }
+      break;
+    }
+
+    if (startIdx > 0) {
+      return lines.slice(startIdx).join('\n').trim();
+    }
+    return text;
   }
 
   private checkWordTarget(wordCount: number, targetWords: number): boolean {
