@@ -1,0 +1,9 @@
+{
+  "number": 1,
+  "title": "The Discovery",
+  "content": "Alice sat at her desk, the glow of three monitors casting blue light across her face. The office was quiet at this hour — most of her colleagues had left hours ago, but Alice had noticed something during the afternoon's code review that she couldn't let go.\n\nThe pattern was subtle. Three lines of code, repeated in seven different modules, each time with slight variations. On the surface, it looked like lazy copy-paste programming, the kind of thing any developer might do under deadline pressure. But Alice had been writing code for fifteen years, and she recognized intentionality when she saw it.\n\nShe pulled up the git blame, tracing each instance back through the version history. All seven had been committed within a forty-eight-hour window, three years ago, by a developer whose name she didn't recognize: M. Chen. The commits had benign messages — 'refactor logging module,' 'update error handling,' 'fix timeout issue' — but the actual changes went far beyond their descriptions.\n\nAlice's fingers paused over the keyboard. She could simply flag it in the code review and move on. That would be the safe thing to do. But the pattern nagged at her, like a word on the tip of her tongue. She opened a new terminal window and began to dig deeper.",
+  "wordCount": 214,
+  "summary": "Alice discovers a suspicious pattern in the codebase during a late-night code review session. Seven identical code snippets committed by an unknown developer M. Chen suggest intentional placement rather than careless copy-pasting.",
+  "editCount": 1,
+  "approved": true
+}

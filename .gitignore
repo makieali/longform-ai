@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.env
+.env.*
+coverage/
+
+# Generated book output
+results/
+
+# Real integration test scripts (may contain sensitive config)
+**/real-azure-test.ts
+**/real-book-generation.ts
+**/export-single-book.ts

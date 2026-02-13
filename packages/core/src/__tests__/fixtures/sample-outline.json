@@ -1,0 +1,16 @@
+{
+  "title": "The Code That Changed Everything",
+  "synopsis": "A software developer discovers a mysterious pattern in legacy code that leads her on an unexpected journey through corporate espionage, ethical dilemmas, and self-discovery.",
+  "themes": ["technology", "ethics", "perseverance", "trust"],
+  "targetAudience": "adult fiction readers interested in technology",
+  "chapters": [
+    { "number": 1, "title": "The Discovery", "summary": "Alice finds a strange pattern in the codebase during a routine audit.", "targetWords": 3000, "keyEvents": ["Pattern discovered", "Initial investigation"], "characters": ["Alice"] },
+    { "number": 2, "title": "Down the Rabbit Hole", "summary": "Alice digs deeper and discovers the pattern connects to a hidden subsystem.", "targetWords": 3000, "keyEvents": ["Hidden system found", "Bob introduced"], "characters": ["Alice", "Bob"] },
+    { "number": 3, "title": "The Truth", "summary": "Alice and Bob uncover the true purpose of the hidden code.", "targetWords": 3000, "keyEvents": ["Truth revealed", "Decision point"], "characters": ["Alice", "Bob", "Director"] }
+  ],
+  "characters": [
+    { "name": "Alice", "role": "protagonist", "description": "A meticulous software developer with a knack for pattern recognition", "traits": ["analytical", "determined", "ethical"], "arc": "From rule-follower to whistleblower" },
+    { "name": "Bob", "role": "supporting", "description": "Alice's colleague and confidant", "traits": ["loyal", "cautious", "experienced"], "arc": "From bystander to ally" },
+    { "name": "Director", "role": "antagonist", "description": "The company director hiding the truth", "traits": ["charismatic", "calculating", "powerful"], "arc": "From respected leader to exposed villain" }
+  ]
+}

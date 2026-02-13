@@ -1,0 +1,24 @@
+{
+  "name": "longform-ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo build",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "clean": "turbo clean"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "turbo": "^2.4.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "dependencies": {
+    "@types/pdfkit": "^0.17.5",
+    "docx": "^9.5.2",
+    "epub-gen-memory": "^1.1.2",
+    "pdfkit": "^0.17.2"
+  }
+}
